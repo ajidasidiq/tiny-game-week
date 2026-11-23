@@ -1,5 +1,9 @@
 # Sprout Run — Day one, day seven
 
+[![make.fun · post-tiktok-day-one-day-seven-20261123-0327](https://make.fun/badge/post-tiktok-day-one-day-seven-20261123-0327.svg)](https://make.fun/bounty/post-tiktok-day-one-day-seven-20261123-0327?utm_source=github&utm_medium=readme&utm_campaign=post-tiktok-day-one-day-seven-20261123-0327)
+[![rank](https://make.fun/badge/post-tiktok-day-one-day-seven-20261123-0327/ajidasidiq/tiny-game-week/rank.svg)](https://make.fun/bounty/post-tiktok-day-one-day-seven-20261123-0327/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=post-tiktok-day-one-day-seven-20261123-0327)
+[![reward](https://make.fun/badge/post-tiktok-day-one-day-seven-20261123-0327/ajidasidiq/tiny-game-week/reward.svg)](https://make.fun/bounty/post-tiktok-day-one-day-seven-20261123-0327?utm_source=github&utm_medium=readme&utm_campaign=post-tiktok-day-one-day-seven-20261123-0327)
+
 A tiny agent-built browser game, filmed a week apart. Day one: a bare garden
 runner — one sprout, six sun coins, one sky. Day seven: the same map, the same
 start, after seven daily updates — twelve suns, flowers, butterflies, a bee, a
@@ -7,7 +11,7 @@ slug, falling petals, golden-hour light, a combo counter and a daily-update
 ticker. The video cuts between identical moments in the game a week apart and
 closes on the day-seven build finishing at the flag.
 
-Made for the make.fun bounty **"Day one, day seven"**
+Made for the make.fun bounty **["Day one, day seven"](https://make.fun/bounty/post-tiktok-day-one-day-seven-20261123-0327)**
 (`post-tiktok-day-one-day-seven-20261123-0327`, $20 across 10 places).
 
 ## The game
