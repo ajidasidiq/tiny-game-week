@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sprout Run — Day 1 vs Day 7</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="game" width="1080" height="1920"></canvas>
+<script>
+'use strict';
+// Sprout Run — a tiny garden runner.
+// One fixed map, one fixed scripted run. Day 1 (?v=1) is the bare first
+// build; Day 7 (?v=7) is the same map and the same run after a week of
+// daily updates. Everything is a pure function of the tick, so both
+// versions play tick-for-tick identically.
+const W = 1080, H = 1920;
+const GROUND_Y = 1560;          // top of the ground strip
+const SPEED = 62;               // sprout run speed, px per second
+const START_X = 90, FLAG_X = 950;
+const JUMP_V = 780, GRAV = 1400; // jump physics (px/s, px/s^2)
+const JUMPS = [2.2, 4.6, 7.0, 9.4, 11.8]; // jump start times, seconds
+const T_FINISH = (FLAG_X - START_X) / SPEED; // ~13.87 s
+const params = new URLSearchParams(location.search);
+const VERSION = params.get('v') === '7' ? 7 : 1;
+
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+
+// ---- coins: same 6 in both versions, +6 more on day 7 -----------------
+// y is the coin centre; ground coins sit just above the ground line,
+// arc coins sit on the jump arcs.
+const COINS_V1 = [
+  { x: 180, y: GROUND_Y - 52 },
+  { x: 252, y: GROUND_Y - 205 },
+  { x: 298, y: GROUND_Y - 205 },
+  { x: 430, y: GROUND_Y - 52 },
+  { x: 560, y: GROUND_Y - 205 },
+  { x: 606, y: GROUND_Y - 205 },
+];
+const COINS_V7_EXTRA = [
+  { x: 340, y: GROUND_Y - 52 },
+  { x: 500, y: GROUND_Y - 52 },
+  { x: 660, y: GROUND_Y - 52 },
+  { x: 700, y: GROUND_Y - 205 },
+  { x: 820, y: GROUND_Y - 52 },
+  { x: 905, y: GROUND_Y - 120 },
+];
+const COINS = VERSION === 7 ? COINS_V1.concat(COINS_V7_EXTRA) : COINS_V1;
+
+// ---- deterministic state ---------------------------------------------
+function jumpOffset(t) {
+  for (const tj of JUMPS) {
+    const dt = t - tj;
+    const air = 2 * JUMP_V / GRAV;
+    if (dt >= 0 && dt <= air) return -(JUMP_V * dt - 0.5 * GRAV * dt * dt);
+  }
+  return 0;
+}
+function coinCollected(c, t) {
+  // sample the scripted run every tick; collected if the sprout's centre
+  // ever overlapped the coin box up to time t
+  const steps = Math.floor(t * 60);
+  for (let k = 0; k <= steps; k++) {
+    const tt = Math.min(k / 60, T_FINISH);
+    const x = START_X + SPEED * tt;
+    const y = GROUND_Y + jumpOffset(tt) - 70;
+    if (Math.abs(x - c.x) < 48 && Math.abs(y - c.y) < 62) return true;
+  }
+  return false;
+}
+function stateAt(t) {
+  const runT = Math.min(t, T_FINISH);
+  const x = START_X + SPEED * runT;
+  const y = GROUND_Y + jumpOffset(runT); // foot position
+  const finished = t >= T_FINISH;
+  let collected = 0;
+  for (const c of COINS) if (coinCollected(c, t)) collected++;
+  return { t, x, y, finished, collected, total: COINS.length };
+}
+window.__jumpTo = function (tick) {
+  const t = tick / 60;
+  window.__t = t;
+  draw(stateAt(t));
+  return stateAt(t);
+};
+window.__state = function () { return stateAt(window.__t || 0); };
+
+// ---- drawing helpers --------------------------------------------------
+function rr(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function circle(x, y, r, fill) {
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = fill; ctx.fill();
+}
+function drawSprout(s, t) {
+  const bob = s.finished ? 0 : Math.sin(t * 14) * 3;
+  const x = s.x, footY = s.y + bob;
+  const bodyTop = footY - 118;
+  ctx.save();
+  ctx.translate(x, footY);
+  // stem
+  ctx.strokeStyle = '#2f9e44'; ctx.lineWidth = 16; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(6, -60, 0, -104); ctx.stroke();
+  // leaves
+  ctx.fillStyle = '#40c057';
+  ctx.beginPath(); ctx.ellipse(-26, -58, 30, 13, -0.6, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(26, -72, 30, 13, 0.6, 0, Math.PI * 2); ctx.fill();
+  // head
+  circle(0, bodyTop - 8, 34, '#69db7c');
+  circle(0, bodyTop - 8, 34, 'rgba(0,0,0,0)');
+  ctx.strokeStyle = '#2b8a3e'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, bodyTop - 8, 34, 0, Math.PI * 2); ctx.stroke();
+  // face
+  circle(-12, bodyTop - 14, 5, '#191419');
+  circle(12, bodyTop - 14, 5, '#191419');
+  ctx.strokeStyle = '#191419'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(0, bodyTop - 6, 12, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+  // cheeks
+  circle(-22, bodyTop - 2, 6, 'rgba(255,150,170,0.7)');
+  circle(22, bodyTop - 2, 6, 'rgba(255,150,170,0.7)');
+  // waving arm when finished
+  if (s.finished) {
+    const w = Math.sin(t * 6) * 0.5;
+    ctx.strokeStyle = '#2f9e44'; ctx.lineWidth = 10;
+    ctx.beginPath(); ctx.moveTo(20, bodyTop + 28);
+    ctx.quadraticCurveTo(52, bodyTop - 10 + w * 20, 58, bodyTop - 44 + w * 24); ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawCoin(c, t, i) {
+  const tw = 1 + Math.sin(t * 4 + i * 1.3) * 0.12;
+  const bobY = Math.sin(t * 2.5 + i) * 4;
+  ctx.save();
+  ctx.translate(c.x, c.y + bobY);
+  ctx.scale(tw, 1);
+  circle(0, 0, 30, '#ffd43b');
+  ctx.strokeStyle = '#f08c00'; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.stroke();
+  // sun face
+  circle(-9, -6, 3.5, '#f08c00');
+  circle(9, -6, 3.5, '#f08c00');
+  ctx.strokeStyle = '#f08c00'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(0, 2, 10, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+  // rays
+  ctx.strokeStyle = '#ffd43b'; ctx.lineWidth = 5;
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2 + t * 0.4;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * 36, Math.sin(a) * 36);
+    ctx.lineTo(Math.cos(a) * 46, Math.sin(a) * 46);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawFlower(x, y, t, i, color) {
+  ctx.save(); ctx.translate(x, y);
+  ctx.strokeStyle = '#2f9e44'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -44); ctx.stroke();
+  const sway = Math.sin(t * 1.6 + i) * 5;
+  ctx.translate(sway, -52);
+  ctx.fillStyle = color;
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2;
+    ctx.beginPath(); ctx.ellipse(Math.cos(a) * 14, Math.sin(a) * 14, 13, 13, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  circle(0, 0, 11, '#ffd43b');
+  ctx.restore();
+}
+function drawButterfly(t, cx, cy, scale, hue) {
+  const flap = Math.sin(t * 14) * 0.7;
+  const x = cx + Math.sin(t * 0.9) * 60;
+  const y = cy + Math.sin(t * 1.7) * 36;
+  ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
+  ctx.fillStyle = hue;
+  ctx.save(); ctx.rotate(-0.5 - flap * 0.4);
+  ctx.beginPath(); ctx.ellipse(-12, -8, 16, 22, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.rotate(0.5 + flap * 0.4);
+  ctx.beginPath(); ctx.ellipse(12, -8, 16, 22, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  ctx.fillStyle = '#191419';
+  ctx.beginPath(); ctx.ellipse(0, 0, 5, 16, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+// ---- main draw ---------------------------------------------------------
+function draw(s) {
+  const t = s.t;
+  // sky
+  let sky;
+  if (VERSION === 7) {
+    sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#ffdf8e');
+    sky.addColorStop(0.45, '#ffb26b');
+    sky.addColorStop(0.8, '#ff8e7a');
+    sky.addColorStop(1, '#e8590c');
+  } else {
+    sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#a5d8ff');
+    sky.addColorStop(0.7, '#d0ebff');
+    sky.addColorStop(1, '#e7f5ff');
+  }
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+
+  // sun
+  if (VERSION === 7) {
+    ctx.save(); ctx.translate(880, 260);
+    ctx.fillStyle = '#fff3bf';
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2 + t * 0.05;
+      ctx.save(); ctx.rotate(a);
+      ctx.fillRect(78, -8, 56, 16); ctx.restore();
+    }
+    circle(0, 0, 74, '#fff3bf');
+    circle(0, 0, 60, '#ffe066');
+    ctx.restore();
+  } else {
+    circle(880, 250, 64, '#fff9db');
+    ctx.strokeStyle = '#ffd43b'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(880, 250, 64, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // clouds (day 7 has more, warmer)
+  const clouds = VERSION === 7
+    ? [[180, 300, 1.1], [520, 210, 0.8], [760, 430, 1.3], [120, 560, 0.9]]
+    : [[300, 320, 1.0], [700, 220, 0.8]];
+  for (const [cx, cy, sc] of clouds) {
+    ctx.fillStyle = VERSION === 7 ? 'rgba(255,236,200,0.95)' : 'rgba(255,255,255,0.9)';
+    ctx.save(); ctx.translate(cx + Math.sin(t * 0.1 + cx) * 8, cy); ctx.scale(sc, sc);
+    circle(0, 0, 46, ctx.fillStyle);
+    circle(44, 8, 36, ctx.fillStyle);
+    circle(-44, 10, 34, ctx.fillStyle);
+    ctx.restore();
+  }
+
+  // distant hills
+  ctx.fillStyle = VERSION === 7 ? '#94d82d' : '#b2f2bb';
+  ctx.beginPath(); ctx.moveTo(0, GROUND_Y);
+  ctx.quadraticCurveTo(280, GROUND_Y - 260, 560, GROUND_Y);
+  ctx.quadraticCurveTo(840, GROUND_Y - 200, 1080, GROUND_Y);
+  ctx.lineTo(1080, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+
+  // ground
+  ctx.fillStyle = VERSION === 7 ? '#66a80f' : '#69b34c';
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+  ctx.fillStyle = VERSION === 7 ? '#5c940d' : '#5aa843';
+  ctx.fillRect(0, GROUND_Y, W, 26);
+  // grass tufts
+  ctx.strokeStyle = VERSION === 7 ? '#4c7a06' : '#4c9a3f'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  for (let i = 0; i < 26; i++) {
+    const gx = (i * 173) % 1080 + 20;
+    const sway = Math.sin(t * 1.2 + i) * 4;
+    ctx.beginPath(); ctx.moveTo(gx, GROUND_Y + 30);
+    ctx.lineTo(gx + sway, GROUND_Y + 6); ctx.stroke();
+  }
+
+  // day 7: flowers along the ground
+  if (VERSION === 7) {
+    const cols = ['#ff8787', '#da77f2', '#ffa94d', '#63e6be', '#748ffc'];
+    for (let i = 0; i < 9; i++) {
+      drawFlower(60 + i * 118, GROUND_Y + 120 + (i % 3) * 46, t, i, cols[i % cols.length]);
+    }
+    // slug trundling on the ground
+    const slugX = 120 + ((t * 14) % 700);
+    ctx.fillStyle = '#9775fa';
+    ctx.beginPath(); ctx.ellipse(slugX, GROUND_Y + 210, 42, 20, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(slugX + 18, GROUND_Y + 186, 20, 16, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#191419';
+    circle(slugX + 30, GROUND_Y + 178, 3, '#191419');
+    circle(slugX + 38, GROUND_Y + 178, 3, '#191419');
+    // petals drifting down
+    for (let i = 0; i < 14; i++) {
+      const px = (i * 167 + 40) % 1080;
+      const py = ((i * 211 + t * 46) % 1500) + 60;
+      ctx.save(); ctx.translate(px + Math.sin(t + i) * 22, py);
+      ctx.rotate(Math.sin(t * 2 + i) * 0.8);
+      ctx.fillStyle = i % 2 ? 'rgba(255,183,197,0.9)' : 'rgba(255,255,255,0.85)';
+      ctx.beginPath(); ctx.ellipse(0, 0, 12, 7, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // path dots
+  ctx.fillStyle = VERSION === 7 ? 'rgba(255,244,191,0.85)' : 'rgba(255,255,255,0.55)';
+  for (let i = 0; i < 12; i++) {
+    circle(70 + i * 84, GROUND_Y + 300, 10, ctx.fillStyle);
+  }
+
+  // coins
+  COINS.forEach((c, i) => {
+    const collected = coinCollected(c, t);
+    if (!collected) drawCoin(c, t, i);
+    else if (VERSION === 7) {
+      // sparkle where a coin was grabbed
+      const a = 0.5 + 0.5 * Math.sin(t * 6 + i * 2);
+      ctx.fillStyle = `rgba(255,212,59,${a.toFixed(2)})`;
+      for (let k = 0; k < 4; k++) {
+        const sa = (k / 4) * Math.PI * 2 + i;
+        circle(c.x + Math.cos(sa) * 22, c.y + Math.sin(sa) * 22, 4, ctx.fillStyle);
+      }
+    }
+  });
+
+  // day 7: bee circling a flower, butterflies
+  if (VERSION === 7) {
+    const bx = 300 + Math.cos(t * 1.4) * 70;
+    const by = GROUND_Y - 260 + Math.sin(t * 2.2) * 40;
+    ctx.fillStyle = '#ffd43b';
+    ctx.beginPath(); ctx.ellipse(bx, by, 20, 15, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#191419';
+    ctx.fillRect(bx - 8, by - 14, 7, 28);
+    ctx.fillRect(bx + 4, by - 14, 7, 28);
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.beginPath(); ctx.ellipse(bx - 4, by - 20, 12, 7, -0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(bx + 8, by - 20, 12, 7, 0.5, 0, Math.PI * 2); ctx.fill();
+    drawButterfly(t, 700, 700, 1.0, '#ff8787');
+    drawButterfly(t, 240, 900, 0.8, '#748ffc');
+  }
+
+  // flag at the end of the map
+  const fx = FLAG_X + 30;
+  ctx.strokeStyle = '#868e96'; ctx.lineWidth = 10; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(fx, GROUND_Y); ctx.lineTo(fx, GROUND_Y - 260); ctx.stroke();
+  const wave = Math.sin(t * 5) * 8;
+  ctx.fillStyle = VERSION === 7 ? '#ff6b6b' : '#e03131';
+  ctx.beginPath();
+  ctx.moveTo(fx, GROUND_Y - 260);
+  ctx.quadraticCurveTo(fx + 70, GROUND_Y - 250 + wave, fx + 130, GROUND_Y - 232);
+  ctx.quadraticCurveTo(fx + 70, GROUND_Y - 214 + wave, fx, GROUND_Y - 204);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 44px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('★', fx + 62, GROUND_Y - 222 + wave * 0.4);
+
+  // sprout
+  drawSprout(s, t);
+
+  // finish burst on day 7
+  if (s.finished && VERSION === 7) {
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
+      const r = 60 + ((t * 120 + i * 37) % 260);
+      const cxp = FLAG_X + Math.cos(a) * r * 0.7;
+      const cyp = GROUND_Y - 300 + Math.sin(a) * r * 0.55;
+      circle(cxp, cyp, 7, ['#ffd43b', '#ff8787', '#63e6be', '#da77f2'][i % 4]);
+    }
+    ctx.fillStyle = '#ff8787';
+    for (let i = 0; i < 5; i++) {
+      const hx = FLAG_X - 160 + i * 80 + Math.sin(t * 2 + i) * 10;
+      const hy = GROUND_Y - 420 + Math.sin(t * 3 + i * 1.7) * 16;
+      ctx.font = '52px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('♥', hx, hy);
+    }
+  }
+
+  // ---- HUD ------------------------------------------------------------
+  // top pill
+  ctx.fillStyle = 'rgba(25,20,25,0.55)';
+  rr(40, 48, 1000, 92, 46); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 46px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('🌱 SPROUT RUN', 72, 110);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = VERSION === 7 ? '#ffd43b' : '#fff';
+  ctx.fillText(VERSION === 7 ? 'DAY 7' : 'DAY 1', 1008, 110);
+  // coin counter
+  ctx.fillStyle = 'rgba(25,20,25,0.55)';
+  rr(40, 164, 330, 84, 42); ctx.fill();
+  ctx.fillStyle = '#ffd43b'; ctx.font = 'bold 44px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(`☀ ${s.collected}/${s.total}`, 72, 222);
+  // day 7: combo + progress
+  if (VERSION === 7) {
+    ctx.fillStyle = 'rgba(25,20,25,0.55)';
+    rr(710, 164, 330, 84, 42); ctx.fill();
+    ctx.fillStyle = '#ff8787'; ctx.font = 'bold 44px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(`COMBO ×${Math.max(1, s.collected)}`, 875, 222);
+    // progress bar to the flag
+    ctx.fillStyle = 'rgba(25,20,25,0.55)';
+    rr(40, 272, 1000, 34, 17); ctx.fill();
+    const p = Math.min(1, (s.x - START_X) / (FLAG_X - START_X));
+    ctx.fillStyle = '#ffd43b';
+    rr(44, 276, Math.max(34, 992 * p), 26, 13); ctx.fill();
+    ctx.font = 'bold 30px sans-serif'; ctx.fillStyle = '#fff'; ctx.textAlign = 'right';
+    ctx.fillText('🏁', 1052, 302);
+  } else {
+    ctx.fillStyle = 'rgba(25,20,25,0.55)';
+    rr(40, 272, 1000, 34, 17); ctx.fill();
+    const p = Math.min(1, (s.x - START_X) / (FLAG_X - START_X));
+    ctx.fillStyle = '#fff';
+    rr(44, 276, Math.max(34, 992 * p), 26, 13); ctx.fill();
+  }
+  // day 7: daily-update ticker at the bottom
+  if (VERSION === 7) {
+    ctx.fillStyle = 'rgba(25,20,25,0.62)';
+    ctx.fillRect(0, 1810, W, 110);
+    const msg = 'DAY 2 🌱 watered the garden    •    DAY 3 🌸 planted flowers    •    DAY 4 🐝 bees moved in    •    DAY 5 🌅 golden hour    •    DAY 6 🔥 combo counter    •    DAY 7 🎉 petal party    •    ';
+    ctx.fillStyle = '#fff3bf'; ctx.font = 'bold 40px sans-serif'; ctx.textAlign = 'left';
+    const wdt = ctx.measureText(msg).width;
+    const off = (t * 90) % wdt;
+    ctx.fillText(msg, -off, 1882);
+    ctx.fillText(msg, -off + wdt, 1882);
+  }
+  // finish banner
+  if (s.finished) {
+    ctx.fillStyle = 'rgba(25,20,25,0.6)';
+    rr(190, 780, 700, 130, 40); ctx.fill();
+    ctx.fillStyle = '#ffd43b'; ctx.font = 'bold 64px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(s.collected === s.total ? '🏁 ALL SUNS!' : '🏁 FINISH!', 540, 866);
+  }
+}
+// first paint
+window.__jumpTo(0);
+</script>
+</body>
+</html>
